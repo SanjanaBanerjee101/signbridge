@@ -8,14 +8,20 @@
 </head>
 <body>
 
-  <!-- JOIN SCREEN -->
-  <div id="join-screen">
-    <h1>SignBridge</h1>
-    <p>Video conferencing with Sign Language support</p>
-    <input type="text" id="room-input" placeholder="Enter Room ID" />
-    <input type="text" id="name-input" placeholder="Enter Your Name" />
-    <button onclick="joinRoom()">Join Room</button>
-  </div>
+    <!-- JOIN SCREEN -->
+    <div id="join-screen">
+        <h1>SignBridge</h1>
+        <p>Video conferencing with Sign Language support</p>
+        <input type="text" id="room-input" placeholder="Enter Room ID" />
+        <input type="text" id="name-input" placeholder="Enter Your Name" />
+        <!-- Add this -->
+        <label style="color:#aaa; font-size:0.9rem;">
+            <input type="checkbox" id="deaf-mode" />
+            &nbsp; I am the deaf person (disable my mic input)
+        </label>
+
+        <button onclick="joinRoom()">Join Room</button>
+    </div>
 
   <!-- MEETING SCREEN (hidden until you join) -->
   <div id="meeting-screen" class="hidden">

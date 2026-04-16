@@ -58,7 +58,10 @@ async function joinRoom() {
   connectToServer();
 
   // Start listening for speech
-  startSpeechRecognition();
+  const isDeafMode = document.getElementById('deaf-mode').checked;
+    if (!isDeafMode) {
+    startSpeechRecognition();
+    }
 }
 
 // ============================================
@@ -267,14 +270,18 @@ function removeVideoBox(clientId) {
 function startSpeechRecognition() {
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!SpeechRecognition) {
-    console.log('Speech recognition not supported in this browser');
+    console.log('Speech recognition not supported');
     return;
   }
 
   recognition = new SpeechRecognition();
-  recognition.continuous = true;       // Keep listening, don't stop after one sentence
-  recognition.interimResults = false;  // Only give us final results
+  recognition.continuous = false;  // Changed to false — more stable
+  recognition.interimResults = false;
   recognition.lang = 'en-US';
+
+  recognition.onstart = () => {
+    console.log('Speech recognition started');
+  };
 
   recognition.onresult = (event) => {
     const transcript = event.results[event.results.length - 1][0].transcript;
@@ -288,7 +295,7 @@ function startSpeechRecognition() {
       playNextSign(myId);
     }
 
-    // Broadcast letters to everyone else in the room
+    // Broadcast to everyone else
     sendMessage({
       type: 'sign-letters',
       broadcast: true,
@@ -299,22 +306,31 @@ function startSpeechRecognition() {
 
   recognition.onerror = (e) => {
     console.log('Speech error:', e.error);
-    if (e.error === 'aborted' || e.error === 'network') {
-      // Wait a moment then restart
-      setTimeout(() => {
-        try { recognition.start(); } catch(err) {}
-      }, 1000);
-    }
   };
 
   recognition.onend = () => {
-    // Always restart when it stops
-    setTimeout(() => {
-      try { recognition.start(); } catch(err) {}
-    }, 500);
+    // Only restart if we are not in deaf mode
+    const isDeafMode = document.getElementById('deaf-mode').checked;
+    if (!isDeafMode) {
+      // Wait a moment before restarting to avoid crash loop
+      setTimeout(() => {
+        try {
+          recognition.start();
+        } catch(err) {
+          console.log('Restart error:', err);
+        }
+      }, 300);
+    }
   };
 
-  recognition.start();
+  // Small delay before first start
+  setTimeout(() => {
+    try {
+      recognition.start();
+    } catch(err) {
+      console.log('Start error:', err);
+    }
+  }, 500);
 }
 
 function playNextSign(clientId) {

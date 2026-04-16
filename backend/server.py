@@ -59,16 +59,19 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, client_id: str)
                 }))
                 
     except WebSocketDisconnect:
-        # Remove client from room when they disconnect
         del rooms[room_id][client_id]
         print(f"Client {client_id} left room {room_id}")
         
-        # Tell everyone else they left
-        for cid, ws in rooms[room_id].items():
-            await ws.send_text(json.dumps({
-                "type": "user-left",
-                "clientId": client_id
-            }))
+        # Clean up empty rooms
+        if len(rooms[room_id]) == 0:
+            del rooms[room_id]
+            print(f"Room {room_id} deleted (empty)")
+        else:
+            for cid, ws in rooms[room_id].items():
+                await ws.send_text(json.dumps({
+                    "type": "user-left",
+                    "clientId": client_id
+                }))
 
 # Serve frontend files
 app.mount("/animations", StaticFiles(directory="../animations"), name="animations")
