@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>SignBridge</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- JOIN SCREEN -->
+  <div id="join-screen">
+    <h1>SignBridge</h1>
+    <p>Video conferencing with Sign Language support</p>
+    <input type="text" id="room-input" placeholder="Enter Room ID" />
+    <input type="text" id="name-input" placeholder="Enter Your Name" />
+    <button onclick="joinRoom()">Join Room</button>
+  </div>
+
+  <!-- MEETING SCREEN (hidden until you join) -->
+  <div id="meeting-screen" class="hidden">
+
+    <!-- This is where all participant video boxes will appear -->
+    <div id="video-grid"></div>
+
+    <!-- Bottom control bar -->
+    <div id="controls">
+        <button id="mic-btn" onclick="toggleMic()">🎤 Mic ON</button>
+        <button id="cam-btn" onclick="toggleCam()">📷 Cam ON</button>
+        <button onclick="leaveRoom()">🔴 Leave</button>
+    </div>
+
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

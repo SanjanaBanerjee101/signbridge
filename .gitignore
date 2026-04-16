@@ -1,0 +1,6 @@
+__pycache__/
+*.pyc
+cert.pem
+key.pem
+generate_cert.py
+*.pem

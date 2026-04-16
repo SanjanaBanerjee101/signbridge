@@ -1,0 +1,155 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', sans-serif;
+}
+
+body {
+  background: #1a1a2e;
+  color: white;
+  height: 100vh;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+/* JOIN SCREEN */
+#join-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 15px;
+}
+
+#join-screen h1 {
+  font-size: 2.5rem;
+  color: #00d4ff;
+}
+
+#join-screen p {
+  color: #aaa;
+  margin-bottom: 10px;
+}
+
+#join-screen input {
+  padding: 12px 20px;
+  border-radius: 8px;
+  border: none;
+  width: 300px;
+  font-size: 1rem;
+  background: #16213e;
+  color: white;
+  border: 1px solid #00d4ff44;
+}
+
+#join-screen button {
+  padding: 12px 40px;
+  background: #00d4ff;
+  color: #1a1a2e;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#join-screen button:hover {
+  background: #00b8d9;
+}
+
+/* MEETING SCREEN */
+#meeting-screen {
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+#video-grid {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 10px;
+  justify-content: center;
+  align-items: center;
+  background: #1a1a2e;
+}
+
+/* Each person's video box */
+.video-container {
+  position: relative;
+  width: 45%;
+  max-width: 600px;
+  aspect-ratio: 16/9;
+  background: #16213e;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #00d4ff33;
+}
+
+.video-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* Name label on each box */
+.name-label {
+  position: absolute;
+  bottom: 10px;
+  left: 10px;
+  background: rgba(0,0,0,0.6);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 0.85rem;
+}
+
+/* The floating sign animation window */
+.sign-overlay {
+  position: absolute;
+  bottom: 40px;
+  right: 10px;
+  width: 120px;
+  height: 120px;
+  background: rgba(0, 0, 0, 0.75);
+  border-radius: 10px;
+  border: 2px solid #00d4ff;
+  overflow: hidden;
+  display: none; /* hidden until someone speaks */
+}
+
+.sign-overlay video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+/* CONTROLS BAR */
+#controls {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  padding: 15px;
+  background: #16213e;
+}
+
+#controls button {
+  padding: 10px 25px;
+  border-radius: 8px;
+  border: none;
+  background: #0f3460;
+  color: white;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+#controls button:hover {
+  background: #00d4ff;
+  color: #1a1a2e;
+}
+
+.hidden {
+  display: none !important;
+}
