@@ -437,4 +437,5 @@ function leaveRoom() {
   document.getElementById('meeting-screen').classList.add('hidden');
   document.getElementById('join-screen').classList.remove('hidden');
   document.getElementById('video-grid').innerHTML = '';
-}
+}   
+ 
