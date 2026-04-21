@@ -343,59 +343,38 @@ function playNextSign(clientId) {
   isPlayingSign = true;
   const letter = signQueue.shift();
   const signOverlay = document.getElementById('sign-' + clientId);
-
-  // Show the overlay
   signOverlay.style.display = 'block';
-
-  // Clear previous content
   signOverlay.innerHTML = '';
 
-  // Check if MP4 exists by trying to fetch it first
-  fetch(`/animations/${letter}.mp4`, { method: 'HEAD' })
-    .then(res => {
-      if (res.ok) {
-        // MP4 exists — play it
-        const vid = document.createElement('video');
-        vid.autoplay = true;
-        vid.muted = true;
-        vid.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-        vid.src = `/animations/${letter}.mp4`;
-        vid.onended = () => playNextSign(clientId);
-        vid.onerror = () => setTimeout(() => playNextSign(clientId), 800);
-        signOverlay.appendChild(vid);
-        vid.play();
-      } else {
-        // No MP4 — check for PNG
-        fetch(`/animations/${letter}.png`, { method: 'HEAD' })
-          .then(res2 => {
-            if (res2.ok) {
-              const img = document.createElement('img');
-              img.src = `/animations/${letter}.png`;
-              img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
-              signOverlay.appendChild(img);
-              setTimeout(() => playNextSign(clientId), 800);
-            } else {
-              // Try JPG
-              fetch(`/animations/${letter}.jpg`, { method: 'HEAD' })
-                .then(res3 => {
-                  if (res3.ok) {
-                    const img = document.createElement('img');
-                    img.src = `/animations/${letter}.jpg`;
-                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
-                    signOverlay.appendChild(img);
-                    setTimeout(() => playNextSign(clientId), 800);
-                  } else {
-                    showLetterFallback(signOverlay, letter, clientId);
-                  }
-                });
-            }
-          });
-      }
-    })
-    .catch(() => {
-      // Fetch failed — show big blue letter
-      showLetterFallback(signOverlay, letter, clientId);
-    });
+  // Try MP4 first, then JPG, then text fallback
+  const vid = document.createElement('video');
+  vid.autoplay = true;
+  vid.muted = true;
+  vid.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+  vid.src = `/animations/${letter}.mp4`;
+
+  vid.onended = () => playNextSign(clientId);
+
+  vid.onerror = () => {
+    // MP4 failed — try JPG image
+    signOverlay.innerHTML = '';
+    const img = document.createElement('img');
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+    img.src = `/animations/${letter}.jpg`;
+
+    img.onload = () => {
+      signOverlay.appendChild(img);
+      setTimeout(() => playNextSign(clientId), 800);
+    };
+
+    img.onerror = () => {
+      // JPG also failed — show text
+      showLetterFallback(signOverlay, letter, clientId, false);
+    };
+  };
+
+  signOverlay.appendChild(vid);
+  vid.play().catch(() => {});
 }
 
 function showLetterFallback(signOverlay, letter, clientId, isRemote = false) {
@@ -428,7 +407,6 @@ function playRemoteSign(senderId) {
   const signOverlay = document.getElementById('sign-' + senderId);
 
   if (!signOverlay) {
-    // Box not found, skip
     setTimeout(() => playRemoteSign(senderId), 100);
     return;
   }
@@ -436,46 +414,33 @@ function playRemoteSign(senderId) {
   signOverlay.style.display = 'block';
   signOverlay.innerHTML = '';
 
-  fetch(`/animations/${letter}.mp4`, { method: 'HEAD' })
-    .then(res => {
-      if (res.ok) {
-        const vid = document.createElement('video');
-        vid.autoplay = true;
-        vid.muted = true;
-        vid.style.cssText = 'width:100%;height:100%;object-fit:cover;';
-        vid.src = `/animations/${letter}.mp4`;
-        vid.onended = () => playRemoteSign(senderId);
-        vid.onerror = () => setTimeout(() => playRemoteSign(senderId), 800);
-        signOverlay.appendChild(vid);
-        vid.play();
-      } else {
-        fetch(`/animations/${letter}.png`, { method: 'HEAD' })
-                .then(res2 => {
-                  if (res2.ok) {
-                    const img = document.createElement('img');
-                    img.src = `/animations/${letter}.png`;
-                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
-                    signOverlay.appendChild(img);
-                    setTimeout(() => playRemoteSign(senderId), 800);
-                  } else {
-                    // Try JPG
-                    fetch(`/animations/${letter}.jpg`, { method: 'HEAD' })
-                      .then(res3 => {
-                        if (res3.ok) {
-                          const img = document.createElement('img');
-                          img.src = `/animations/${letter}.jpg`;
-                          img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
-                          signOverlay.appendChild(img);
-                          setTimeout(() => playRemoteSign(senderId), 800);
-                        } else {
-                          showLetterFallback(signOverlay, letter, senderId, true);
-                        }
-                      });
-                  }
-                });
-      }
-    })
-    .catch(() => showLetterFallback(signOverlay, letter, senderId, true));
+  // Try MP4 first, then JPG, then text fallback
+  const vid = document.createElement('video');
+  vid.autoplay = true;
+  vid.muted = true;
+  vid.style.cssText = 'width:100%;height:100%;object-fit:cover;';
+  vid.src = `/animations/${letter}.mp4`;
+
+  vid.onended = () => playRemoteSign(senderId);
+
+  vid.onerror = () => {
+    signOverlay.innerHTML = '';
+    const img = document.createElement('img');
+    img.style.cssText = 'width:100%;height:100%;object-fit:contain;background:#000;';
+    img.src = `/animations/${letter}.jpg`;
+
+    img.onload = () => {
+      signOverlay.appendChild(img);
+      setTimeout(() => playRemoteSign(senderId), 800);
+    };
+
+    img.onerror = () => {
+      showLetterFallback(signOverlay, letter, senderId, true);
+    };
+  };
+
+  signOverlay.appendChild(vid);
+  vid.play().catch(() => {});
 }
 
 // ============================================
