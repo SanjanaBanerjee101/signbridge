@@ -369,15 +369,25 @@ function playNextSign(clientId) {
         fetch(`/animations/${letter}.png`, { method: 'HEAD' })
           .then(res2 => {
             if (res2.ok) {
-              // PNG exists — show image
               const img = document.createElement('img');
               img.src = `/animations/${letter}.png`;
               img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
               signOverlay.appendChild(img);
               setTimeout(() => playNextSign(clientId), 800);
             } else {
-              // Nothing exists — show big blue letter
-              showLetterFallback(signOverlay, letter, clientId);
+              // Try JPG
+              fetch(`/animations/${letter}.jpg`, { method: 'HEAD' })
+                .then(res3 => {
+                  if (res3.ok) {
+                    const img = document.createElement('img');
+                    img.src = `/animations/${letter}.jpg`;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+                    signOverlay.appendChild(img);
+                    setTimeout(() => playNextSign(clientId), 800);
+                  } else {
+                    showLetterFallback(signOverlay, letter, clientId);
+                  }
+                });
             }
           });
       }
@@ -440,17 +450,29 @@ function playRemoteSign(senderId) {
         vid.play();
       } else {
         fetch(`/animations/${letter}.png`, { method: 'HEAD' })
-          .then(res2 => {
-            if (res2.ok) {
-              const img = document.createElement('img');
-              img.src = `/animations/${letter}.png`;
-              img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
-              signOverlay.appendChild(img);
-              setTimeout(() => playRemoteSign(senderId), 800);
-            } else {
-              showLetterFallback(signOverlay, letter, senderId, true);
-            }
-          });
+                .then(res2 => {
+                  if (res2.ok) {
+                    const img = document.createElement('img');
+                    img.src = `/animations/${letter}.png`;
+                    img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+                    signOverlay.appendChild(img);
+                    setTimeout(() => playRemoteSign(senderId), 800);
+                  } else {
+                    // Try JPG
+                    fetch(`/animations/${letter}.jpg`, { method: 'HEAD' })
+                      .then(res3 => {
+                        if (res3.ok) {
+                          const img = document.createElement('img');
+                          img.src = `/animations/${letter}.jpg`;
+                          img.style.cssText = 'width:100%;height:100%;object-fit:contain;';
+                          signOverlay.appendChild(img);
+                          setTimeout(() => playRemoteSign(senderId), 800);
+                        } else {
+                          showLetterFallback(signOverlay, letter, senderId, true);
+                        }
+                      });
+                  }
+                });
       }
     })
     .catch(() => showLetterFallback(signOverlay, letter, senderId, true));
