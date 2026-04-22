@@ -62,6 +62,14 @@ async function joinRoom() {
     if (!isDeafMode) {
     startSpeechRecognition();
     }
+    // Load sign model
+  loadSignModel();
+
+  // If deaf mode, start sign detection
+  if (isDeafMode) {
+    const myVideo = document.querySelector(`#${myId} video`);
+    setTimeout(() => initSignDetection(myVideo, myId), 2000);
+  }
 }
 
 // ============================================
@@ -129,6 +137,23 @@ function connectToServer() {
       if (!window.remoteSignPlaying[senderId]) {
         playRemoteSign(senderId);
       }
+    }
+    else if (message.type === 'sign-letter-detected') {
+      // Deaf person signed a letter — speak it out loud
+      const letter = message.letter;
+      console.log('Remote sign detected:', letter);
+      
+      // Accumulate letters into words
+      if (!window.signWord) window.signWord = '';
+      window.signWord += letter;
+      
+      // Speak the letter
+      const utterance = new SpeechSynthesisUtterance(letter);
+      utterance.rate = 0.8;
+      window.speechSynthesis.speak(utterance);
+
+      // Show the letter on screen
+      showIncomingSign(letter, message.from);
     }
   };
 }
@@ -437,5 +462,31 @@ function leaveRoom() {
   document.getElementById('meeting-screen').classList.add('hidden');
   document.getElementById('join-screen').classList.remove('hidden');
   document.getElementById('video-grid').innerHTML = '';
-}   
- 
+} 
+
+function showIncomingSign(letter, senderId) {
+  const box = document.getElementById(senderId);
+  if (!box) return;
+
+  let signText = box.querySelector('.sign-text');
+  if (!signText) {
+    signText = document.createElement('div');
+    signText.classList.add('sign-text');
+    signText.style.cssText = `
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      background: rgba(0,212,255,0.9);
+      color: #000;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 1.2rem;
+      font-weight: bold;
+    `;
+    box.appendChild(signText);
+  }
+
+  if (!window.incomingSignText) window.incomingSignText = '';
+  window.incomingSignText += letter;
+  signText.innerText = window.incomingSignText;
+}

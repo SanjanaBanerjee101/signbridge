@@ -5,3 +5,5 @@ key.pem
 generate_cert.py
 *.pem
 chrome_dev/
+convert_model.py
+tfjs_env/
