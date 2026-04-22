@@ -29,8 +29,7 @@ function initSignDetection(videoElement, clientId) {
   detectionCanvas = document.createElement('canvas');
   detectionCanvas.width = 400;
   detectionCanvas.height = 400;
-  detectionCtx = detectionCanvas.getContext('2d');
-
+  detectionCtx = detectionCanvas.getContext('2d', { willReadFrequently: true });
   // Initialize MediaPipe Hands
   hands = new Hands({
     locateFile: (file) => {
