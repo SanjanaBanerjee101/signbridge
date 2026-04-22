@@ -49,18 +49,21 @@ function initSignDetection(videoElement, clientId) {
     onHandResults(results, clientId);
   });
 
-  // Start camera processing
-  camera = new Camera(videoElement, {
-    onFrame: async () => {
-      if (signDetectionActive) {
-        await hands.send({ image: videoElement });
-      }
-    },
-    width: 640,
-    height: 480
-  });
+  // Instead of using Camera utility, manually send frames
+  // This works with existing WebRTC video stream
+  async function processFrame() {
+    if (!signDetectionActive) {
+      requestAnimationFrame(processFrame);
+      return;
+    }
+    if (videoElement.readyState >= 2) {
+      await hands.send({ image: videoElement });
+    }
+    requestAnimationFrame(processFrame);
+  }
 
-  camera.start();
+  signDetectionActive = true;
+  processFrame();
   console.log('Sign detection initialized!');
 }
 
