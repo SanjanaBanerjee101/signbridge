@@ -67,8 +67,16 @@ async function joinRoom() {
 
   // If deaf mode, start sign detection
   if (isDeafMode) {
-    const myVideo = document.querySelector(`#${myId} video`);
-    setTimeout(() => initSignDetection(myVideo, myId), 2000);
+    setTimeout(() => {
+      const myContainer = document.getElementById(myId);
+      if (myContainer) {
+        const myVideo = myContainer.querySelector('video');
+        console.log('Video element found:', myVideo);
+        initSignDetection(myVideo, myId);
+      } else {
+        console.log('Container not found for id:', myId);
+      }
+    }, 2000);
   }
 }
 
