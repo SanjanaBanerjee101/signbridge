@@ -72,15 +72,41 @@ function onHandResults(results, clientId) {
   }
 
   const landmarks = results.multiHandLandmarks[0];
-  const pts = landmarks.map(lm => ({
-    x: lm.x * 400,
-    y: lm.y * 400
+
+  // Convert to pixel coords
+  let pts = landmarks.map(lm => ({
+    x: lm.x * 640,
+    y: lm.y * 480
   }));
 
-  // Draw skeleton on white canvas (same as Python code)
+  // Get bounding box
+  let minX = Math.min(...pts.map(p => p.x));
+  let maxX = Math.max(...pts.map(p => p.x));
+  let minY = Math.min(...pts.map(p => p.y));
+  let maxY = Math.max(...pts.map(p => p.y));
+
+  // Add padding
+  let padding = 20;
+  minX -= padding;
+  minY -= padding;
+  maxX += padding;
+  maxY += padding;
+
+  // Normalize to 400x400
+  pts = pts.map(p => ({
+    x: ((p.x - minX) / (maxX - minX)) * 400,
+    y: ((p.y - minY) / (maxY - minY)) * 400
+  }));
+
+  //
+  pts.forEach(pt => {
+    pt.x = 400 - pt.x;
+  });
+
+  // Draw skeleton
   drawSkeleton(pts);
 
-  // Predict from skeleton
+  // Predict
   predictSign(pts, clientId);
 }
 
