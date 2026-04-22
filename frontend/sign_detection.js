@@ -162,6 +162,8 @@ async function predictSign(pts, clientId) {
       broadcastSignLetter(letter, clientId);
     }
   }
+  console.log("Raw prediction:", prediction);
+  console.log("Top group:", ch1_idx);
 }
 
 function getLetter(ch1, ch2, pts) {
