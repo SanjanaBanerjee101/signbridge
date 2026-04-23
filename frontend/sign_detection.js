@@ -5,11 +5,24 @@
 
 let signModel = null;
 let signDetectionActive = false;
-let lastDetectedLetter = '';
 let detectionCanvas = null;
 let detectionCtx = null;
 let hands = null;
-let lastBroadcastTime = 0;
+
+// ---- Lock + Confirm flow ----
+// Step 1: Hold a sign  → letter gets LOCKED (shown on screen, not sent yet)
+// Step 2: Show open palm → CONFIRMS the locked letter → broadcasts it
+// Step 3: Lower hand / new sign → ready for next letter
+
+let letterBuffer = [];
+const BUFFER_SIZE = 15;
+const LOCK_THRESHOLD = 10;    // frames that must agree to lock
+
+let lockedLetter = '';        // currently locked, waiting for palm
+let palmBuffer = [];
+const PALM_BUFFER_SIZE = 10;
+const PALM_THRESHOLD = 7;     // steady palm frames needed to confirm
+let waitingForPalm = false;
 
 async function loadSignModel() {
   try {
@@ -140,42 +153,83 @@ function dist(a, b) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
+// ============================================
+// Open palm detection
+// All 5 fingertips above their knuckles = open palm
+// ============================================
+function isOpenPalm(pts) {
+  // fingertip indices: 4,8,12,16,20
+  // knuckle indices:   3,6,10,14,18
+  // "above" in image = smaller y value
+  const thumb  = pts[4].y  < pts[3].y;
+  const index  = pts[8].y  < pts[6].y;
+  const middle = pts[12].y < pts[10].y;
+  const ring   = pts[16].y < pts[14].y;
+  const pinky  = pts[20].y < pts[18].y;
+  return thumb && index && middle && ring && pinky;
+}
+
+// ============================================
+// predictSign — Lock + Confirm flow
+// ============================================
 async function predictSign(originalPts, drawPts, clientId) {
   if (!signModel) return;
 
+  // --- Check for open palm first (confirm gesture) ---
+  const palmDetected = isOpenPalm(originalPts);
+  palmBuffer.push(palmDetected);
+  if (palmBuffer.length > PALM_BUFFER_SIZE) palmBuffer.shift();
+  const palmCount = palmBuffer.filter(Boolean).length;
+  const steadyPalm = palmCount >= PALM_THRESHOLD;
+
+  if (waitingForPalm && steadyPalm && lockedLetter) {
+    // User showed open palm — confirm the locked letter
+    console.log('🖐 Palm detected — confirming letter:', lockedLetter);
+    broadcastSignLetter(lockedLetter, clientId);
+    lockedLetter = '';
+    waitingForPalm = false;
+    letterBuffer = [];
+    palmBuffer = [];
+    showLockedLetter(''); // clear the lock indicator
+    return;
+  }
+
+  // If palm is showing, don't try to detect a letter — wait for palm to drop
+  if (steadyPalm) return;
+
+  // --- Run model to get letter ---
   const tensor = tf.tidy(() => {
     return tf.browser.fromPixels(detectionCanvas)
       .toFloat()
       .div(255.0)
-      .expandDims(0); // shape [1, 400, 400, 3]
+      .expandDims(0);
   });
 
   const prediction = await signModel.predict(tensor).data();
   tensor.dispose();
 
-  // Get top 2 group predictions — same logic as Python
   const prob = Array.from(prediction);
   const ch1_idx = prob.indexOf(Math.max(...prob));
   prob[ch1_idx] = 0;
   const ch2_idx = prob.indexOf(Math.max(...prob));
 
-  console.log('Raw group probabilities:', Array.from(prediction).map(v => v.toFixed(3)));
-  console.log('Top group (ch1):', ch1_idx, '| Second group (ch2):', ch2_idx);
-
-  // IMPORTANT: Pass originalPts (in pixel space) to getLetter
-  // The Python rules use self.pts which are the ORIGINAL landmark pixel coords
   const letter = getLetter(ch1_idx, ch2_idx, originalPts);
-  console.log('Detected letter:', letter);
+  console.log('Top group (ch1):', ch1_idx, '| Letter:', letter);
 
-  if (letter && letter !== ' ' && letter !== 'next' && letter !== 'Backspace') {
-    const now = Date.now();
-    if (letter !== lastDetectedLetter || now - lastBroadcastTime > 2000) {
-      lastDetectedLetter = letter;
-      if (now - lastBroadcastTime > 1500) {
-        lastBroadcastTime = now;
-        broadcastSignLetter(letter, clientId);
-      }
-    }
+  if (!letter) return;
+
+  // --- Stability buffer: lock letter after enough consistent frames ---
+  letterBuffer.push(letter);
+  if (letterBuffer.length > BUFFER_SIZE) letterBuffer.shift();
+
+  const matchCount = letterBuffer.filter(l => l === letter).length;
+
+  if (matchCount >= LOCK_THRESHOLD && letter !== lockedLetter) {
+    lockedLetter = letter;
+    waitingForPalm = true;
+    letterBuffer = [];
+    console.log('🔒 Letter locked:', lockedLetter, '— show open palm to confirm');
+    showLockedLetter(lockedLetter); // show on screen but don't send yet
   }
 }
 
@@ -473,10 +527,11 @@ function broadcastSignLetter(letter, clientId) {
     letter: letter,
     senderId: clientId
   });
-  showDetectedLetter(letter);
+  showConfirmedLetter(letter);
 }
 
-function showDetectedLetter(letter) {
+// Shows the letter as LOCKED (yellow) — waiting for palm confirm
+function showLockedLetter(letter) {
   let indicator = document.getElementById('sign-indicator');
   if (!indicator) {
     indicator = document.createElement('div');
@@ -485,17 +540,31 @@ function showDetectedLetter(letter) {
       position: fixed;
       bottom: 80px;
       left: 20px;
-      background: rgba(0,0,0,0.8);
-      color: #00d4ff;
       padding: 10px 20px;
       border-radius: 10px;
       font-size: 1.5rem;
       font-weight: bold;
-      border: 2px solid #00d4ff;
       z-index: 1000;
     `;
     document.body.appendChild(indicator);
   }
-  indicator.innerText = `Signing: ${letter}`;
-  setTimeout(() => { indicator.innerText = ''; }, 1500);
+  if (letter) {
+    indicator.style.background = 'rgba(0,0,0,0.85)';
+    indicator.style.color = '#FFD700';
+    indicator.style.border = '2px solid #FFD700';
+    indicator.innerText = `🔒 Locked: ${letter}  (show open palm to confirm)`;
+  } else {
+    indicator.innerText = '';
+  }
+}
+
+// Shows the letter as CONFIRMED (cyan) — briefly after palm confirm
+function showConfirmedLetter(letter) {
+  let indicator = document.getElementById('sign-indicator');
+  if (!indicator) return;
+  indicator.style.background = 'rgba(0,0,0,0.85)';
+  indicator.style.color = '#00d4ff';
+  indicator.style.border = '2px solid #00d4ff';
+  indicator.innerText = `✅ Sent: ${letter}`;
+  setTimeout(() => { indicator.innerText = ''; }, 1000);
 }
