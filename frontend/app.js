@@ -163,6 +163,33 @@ function connectToServer() {
       // Show the letter on screen
       showIncomingSign(letter, message.from);
     }
+    
+    // When deaf user confirms a whole word via suggestion button
+    else if (message.type === 'sign-word-confirmed') {
+      const word = message.word;
+      console.log('Remote word confirmed:', word);
+
+      // Speak the whole word
+      const utterance = new SpeechSynthesisUtterance(word);
+      utterance.rate = 0.85;
+      window.speechSynthesis.speak(utterance);
+
+      // Show it on screen
+      showIncomingSign(word, message.from);
+    }
+
+    // When deaf user sends a full sentence
+    else if (message.type === 'sign-sentence') {
+      const sentence = message.sentence;
+      console.log('Remote sentence received:', sentence);
+
+      const utterance = new SpeechSynthesisUtterance(sentence);
+      utterance.rate = 0.85;
+      window.speechSynthesis.speak(utterance);
+
+      showIncomingSign(sentence, message.from);
+    }
+
   };
 }
 

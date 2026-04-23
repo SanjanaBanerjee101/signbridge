@@ -190,6 +190,7 @@ async function predictSign(originalPts, drawPts, clientId) {
     // User showed open palm — confirm the locked letter
     console.log('🖐 Palm detected — confirming letter:', lockedLetter);
     broadcastSignLetter(lockedLetter, clientId);
+    onLetterConfirmed(lockedLetter);  // update word suggestions UI
     lockedLetter = '';
     waitingForPalm = false;
     letterBuffer = [];
