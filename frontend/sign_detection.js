@@ -82,6 +82,10 @@ function onHandResults(results, clientId) {
     y: lm.y * frameH
   }));
 
+  // Mirror x-axis to match training data (Python used flipType=True)
+  // Model was trained on right hand in mirrored/selfie view
+  pts = pts.map(p => ({ x: frameW - p.x, y: p.y }));
+
   // Step 2: Get bounding box of the hand (same as Python's hand['bbox'])
   let minX = Math.min(...pts.map(p => p.x));
   let maxX = Math.max(...pts.map(p => p.x));
@@ -474,7 +478,11 @@ function getLetter(ch1, ch2, pts) {
     return result;
   }
 
-  if (ch1 === 2) return dist(pts[12], pts[4]) > 42 ? 'C' : 'O';
+  if (ch1 === 2) {
+    // O: thumb and middle fingertip are close together forming a circle
+    // C: they are further apart (open curve)
+    return dist(pts[12], pts[4]) > 42 ? 'C' : 'O';
+  }
 
   if (ch1 === 3) return dist(pts[8], pts[12]) > 72 ? 'G' : 'H';
 
@@ -486,6 +494,12 @@ function getLetter(ch1, ch2, pts) {
 
   if (ch1 === 5) {
     if (pts[4].x > pts[12].x && pts[4].x > pts[16].x && pts[4].x > pts[20].x) {
+      // Before calling Q, check if fingers are all curled into a circle (O shape)
+      // O has all fingertips close to thumb tip and palm center
+      const avgFingerY = (pts[8].y + pts[12].y + pts[16].y + pts[20].y) / 4;
+      const allCurled = pts[8].y > pts[6].y && pts[12].y > pts[10].y &&
+                        pts[16].y > pts[14].y && pts[20].y > pts[18].y;
+      if (allCurled && dist(pts[4], pts[12]) < 50) return 'O';
       return pts[8].y < pts[5].y ? 'Z' : 'Q';
     }
     return 'P';
