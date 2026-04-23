@@ -484,13 +484,26 @@ function getLetter(ch1, ch2, pts) {
     return dist(pts[12], pts[4]) > 42 ? 'C' : 'O';
   }
 
-  if (ch1 === 3) return dist(pts[8], pts[12]) > 72 ? 'G' : 'H';
+  if (ch1 === 3) {
+    // E check: all 4 fingertips are BELOW their pip joints (fully curled down)
+    // and thumb tip is also tucked under (high y value)
+    const allCurledDown = pts[8].y > pts[6].y && pts[12].y > pts[10].y &&
+                          pts[16].y > pts[14].y && pts[20].y > pts[18].y;
+    if (allCurledDown && pts[4].y > pts[8].y) return 'E';
+    return dist(pts[8], pts[12]) > 72 ? 'G' : 'H';
+  }
 
   if (ch1 === 7) return dist(pts[8], pts[4]) > 42 ? 'Y' : 'J';
 
   if (ch1 === 4) return 'L';
 
-  if (ch1 === 6) return 'X';
+  if (ch1 === 6) {
+    // O check: all fingers curled + thumb close to middle fingertip
+    const allCurled6 = pts[8].y > pts[6].y && pts[12].y > pts[10].y &&
+                       pts[16].y > pts[14].y && pts[20].y > pts[18].y;
+    if (allCurled6 && dist(pts[4], pts[12]) < 55) return 'O';
+    return 'X';
+  }
 
   if (ch1 === 5) {
     if (pts[4].x > pts[12].x && pts[4].x > pts[16].x && pts[4].x > pts[20].x) {
