@@ -1,5 +1,6 @@
 // ============================================
 // SIGN DETECTION — MediaPipe + TensorFlow.js
+// Matches original Python training pipeline exactly
 // ============================================
 
 let signModel = null;
@@ -8,11 +9,7 @@ let lastDetectedLetter = '';
 let detectionCanvas = null;
 let detectionCtx = null;
 let hands = null;
-let camera = null;
 let lastBroadcastTime = 0;
-
-// The 8 group to letter mapping rules (from original Python code)
-// We'll use landmark positions to determine exact letter within each group
 
 async function loadSignModel() {
   try {
@@ -20,21 +17,19 @@ async function loadSignModel() {
     console.log('Sign model loaded!');
     console.log('Input shape:', signModel.inputs[0].shape);
   } catch (err) {
-    console.log('Error loading sign model:', err);
+    console.error('Error loading sign model:', err);
   }
 }
 
 function initSignDetection(videoElement, clientId) {
-  // Create offscreen canvas for skeleton drawing
+  // Offscreen 400x400 canvas — exactly like Python's white.jpg
   detectionCanvas = document.createElement('canvas');
   detectionCanvas.width = 400;
   detectionCanvas.height = 400;
   detectionCtx = detectionCanvas.getContext('2d', { willReadFrequently: true });
-  // Initialize MediaPipe Hands
+
   hands = new Hands({
-    locateFile: (file) => {
-      return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
-    }
+    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
   });
 
   hands.setOptions({
@@ -44,17 +39,10 @@ function initSignDetection(videoElement, clientId) {
     minTrackingConfidence: 0.5
   });
 
-  hands.onResults((results) => {
-    onHandResults(results, clientId);
-  });
+  hands.onResults((results) => onHandResults(results, clientId));
 
-  // Instead of using Camera utility, manually send frames
-  // This works with existing WebRTC video stream
   async function processFrame() {
-    if (!signDetectionActive) {
-      requestAnimationFrame(processFrame);
-      return;
-    }
+    if (!signDetectionActive) { requestAnimationFrame(processFrame); return; }
     if (videoElement.readyState >= 2) {
       await hands.send({ image: videoElement });
     }
@@ -67,76 +55,79 @@ function initSignDetection(videoElement, clientId) {
 }
 
 function onHandResults(results, clientId) {
-  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
-    return;
-  }
+  if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) return;
 
   const landmarks = results.multiHandLandmarks[0];
 
-  // Convert to pixel coords
+  // Step 1: Convert normalized MediaPipe landmarks to pixel coordinates
+  // Use 640x480 as the reference frame size (matches typical webcam)
+  const frameW = 640;
+  const frameH = 480;
+
   let pts = landmarks.map(lm => ({
-    x: lm.x * 640,
-    y: lm.y * 480
+    x: lm.x * frameW,
+    y: lm.y * frameH
   }));
 
-  // Get bounding box
+  // Step 2: Get bounding box of the hand (same as Python's hand['bbox'])
   let minX = Math.min(...pts.map(p => p.x));
   let maxX = Math.max(...pts.map(p => p.x));
   let minY = Math.min(...pts.map(p => p.y));
   let maxY = Math.max(...pts.map(p => p.y));
 
-  // Add padding
-  let padding = 20;
-  minX -= padding;
-  minY -= padding;
-  maxX += padding;
-  maxY += padding;
+  const w = maxX - minX;
+  const h = maxY - minY;
+  const offset = 15; // same as Python's offset variable
 
-  // Normalize to 400x400
-  pts = pts.map(p => ({
-    x: ((p.x - minX) / (maxX - minX)) * 400,
-    y: ((p.y - minY) / (maxY - minY)) * 400
+  // Step 3: Compute the centering offsets — exactly like Python:
+  // os  = ((400 - w) // 2) - 15
+  // os1 = ((400 - h) // 2) - 15
+  const os  = Math.floor((400 - w) / 2) - offset;
+  const os1 = Math.floor((400 - h) / 2) - offset;
+
+  // Step 4: Shift all points using bounding box top-left + centering offset
+  // In Python: pts[i][0] + os, pts[i][1] + os1
+  // pts[i][0] is relative to the cropped image, so subtract minX first
+  const drawPts = pts.map(p => ({
+    x: (p.x - minX) + os,
+    y: (p.y - minY) + os1
   }));
 
-  //
-  pts.forEach(pt => {
-    pt.x = 400 - pt.x;
-  });
+  // Step 5: Draw skeleton on white canvas — exactly like Python
+  drawSkeleton(drawPts);
 
-  // Draw skeleton
-  drawSkeleton(pts);
-
-  // Predict
-  predictSign(pts, clientId);
+  // Step 6: Predict using the canvas image, pass ORIGINAL pts for landmark rules
+  predictSign(pts, drawPts, clientId);
 }
 
 function drawSkeleton(pts) {
-  // White background
+  // White background — same as Python's white.jpg
   detectionCtx.fillStyle = 'white';
   detectionCtx.fillRect(0, 0, 400, 400);
 
-  // Draw connections (same as Python code)
+  // Green lines — same connections as Python
   detectionCtx.strokeStyle = 'rgb(0, 255, 0)';
   detectionCtx.lineWidth = 3;
 
-  const connections = [
-    [0,1],[1,2],[2,3],[3,4],       // thumb
-    [5,6],[6,7],[7,8],              // index
-    [9,10],[10,11],[11,12],         // middle
-    [13,14],[14,15],[15,16],        // ring
-    [17,18],[18,19],[19,20],        // pinky
-    [5,9],[9,13],[13,17],           // palm
-    [0,5],[0,17]                    // wrist
+  // Python draws these exact segments:
+  const segments = [
+    [0,1],[1,2],[2,3],[3,4],     // thumb
+    [5,6],[6,7],[7,8],           // index
+    [9,10],[10,11],[11,12],      // middle
+    [13,14],[14,15],[15,16],     // ring
+    [17,18],[18,19],[19,20],     // pinky
+    [5,9],[9,13],[13,17],        // palm knuckles
+    [0,5],[0,17]                 // wrist to edge knuckles
   ];
 
-  for (const [a, b] of connections) {
+  for (const [a, b] of segments) {
     detectionCtx.beginPath();
     detectionCtx.moveTo(pts[a].x, pts[a].y);
     detectionCtx.lineTo(pts[b].x, pts[b].y);
     detectionCtx.stroke();
   }
 
-  // Draw landmark points
+  // Red dots — same as Python's cv2.circle with radius 2
   detectionCtx.fillStyle = 'rgb(255, 0, 0)';
   for (const pt of pts) {
     detectionCtx.beginPath();
@@ -149,62 +140,305 @@ function dist(a, b) {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
 }
 
-async function predictSign(pts, clientId) {
+async function predictSign(originalPts, drawPts, clientId) {
   if (!signModel) return;
 
-  // Get image data from canvas
-  const imageData = detectionCtx.getImageData(0, 0, 400, 400);
-
-  // Convert to tensor
   const tensor = tf.tidy(() => {
     return tf.browser.fromPixels(detectionCanvas)
-      .resizeBilinear([400, 400])
       .toFloat()
       .div(255.0)
-      .expandDims(0);
+      .expandDims(0); // shape [1, 400, 400, 3]
   });
 
-  // Get prediction
   const prediction = await signModel.predict(tensor).data();
   tensor.dispose();
 
-  // Get top 2 predictions (ch1, ch2)
+  // Get top 2 group predictions — same logic as Python
   const prob = Array.from(prediction);
   const ch1_idx = prob.indexOf(Math.max(...prob));
   prob[ch1_idx] = 0;
   const ch2_idx = prob.indexOf(Math.max(...prob));
 
-  // Apply landmark rules to get exact letter
-  const letter = getLetter(ch1_idx, ch2_idx, pts);
+  console.log('Raw group probabilities:', Array.from(prediction).map(v => v.toFixed(3)));
+  console.log('Top group (ch1):', ch1_idx, '| Second group (ch2):', ch2_idx);
 
-  if (letter && letter !== ' ' && letter !== lastDetectedLetter) {
-    lastDetectedLetter = letter;
-    console.log('Detected:', letter);
+  // IMPORTANT: Pass originalPts (in pixel space) to getLetter
+  // The Python rules use self.pts which are the ORIGINAL landmark pixel coords
+  const letter = getLetter(ch1_idx, ch2_idx, originalPts);
+  console.log('Detected letter:', letter);
 
-    // Throttle broadcasts to avoid spam
+  if (letter && letter !== ' ' && letter !== 'next' && letter !== 'Backspace') {
     const now = Date.now();
-    if (now - lastBroadcastTime > 1500) {
-      lastBroadcastTime = now;
-      broadcastSignLetter(letter, clientId);
+    if (letter !== lastDetectedLetter || now - lastBroadcastTime > 2000) {
+      lastDetectedLetter = letter;
+      if (now - lastBroadcastTime > 1500) {
+        lastBroadcastTime = now;
+        broadcastSignLetter(letter, clientId);
+      }
     }
   }
-  console.log("Raw prediction:", prediction);
-  console.log("Top group:", ch1_idx);
 }
 
+// ============================================
+// getLetter — Ported from Python's predict()
+// Uses original pixel-space landmark coords
+// ============================================
 function getLetter(ch1, ch2, pts) {
-  // Group 0 → A, E, M, N, S, T
-  if (ch1 === 0) {
-    if (pts[4].x < pts[6].x && pts[4].x < pts[10].x && pts[4].x < pts[14].x && pts[4].x < pts[18].x) return 'A';
-    if (pts[4].y > pts[8].y && pts[4].y > pts[12].y && pts[4].y > pts[16].y && pts[4].y > pts[20].y) return 'E';
-    if (pts[4].x > pts[6].x && pts[4].x > pts[10].x && pts[4].x > pts[14].x) return 'M';
-    if (pts[4].x > pts[6].x && pts[4].x > pts[10].x) return 'N';
-    if (pts[4].x > pts[6].x && pts[4].x < pts[10].x && pts[4].y < pts[14].y) return 'T';
-    return 'S';
+  let pl = [ch1, ch2];
+
+  // ---- Inter-group disambiguation rules (same order as Python) ----
+
+  // [Aemnst] condition
+  const l0 = [[5,2],[5,3],[3,5],[3,6],[3,0],[3,2],[6,4],[6,1],[6,2],[6,6],[6,7],[6,0],[6,5],
+               [4,1],[1,0],[1,1],[6,3],[1,6],[5,6],[5,1],[4,5],[1,4],[1,5],[2,0],[2,6],[4,6],
+               [1,0],[5,7],[1,6],[6,1],[7,6],[2,5],[7,1],[5,4],[7,0],[7,5],[7,2]];
+  if (inList(pl, l0)) {
+    if (pts[6].y < pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y)
+      ch1 = 0;
   }
 
-  // Group 1 → B, D, F, I, K, R, U, V, W
+  // [o][s]
+  if (inList(pl, [[2,2],[2,1]])) {
+    if (pts[5].x < pts[4].x) ch1 = 0;
+  }
+
+  pl = [ch1, ch2];
+
+  // [c0][aemnst]
+  if (inList(pl, [[0,0],[0,6],[0,2],[0,5],[0,1],[0,7],[5,2],[7,6],[7,1]])) {
+    if (pts[0].x > pts[8].x && pts[0].x > pts[4].x && pts[0].x > pts[12].x &&
+        pts[0].x > pts[16].x && pts[0].x > pts[20].x && pts[5].x > pts[4].x)
+      ch1 = 2;
+  }
+
+  // [c0][aemnst] distance check
+  if (inList(pl, [[6,0],[6,6],[6,2]])) {
+    if (dist(pts[8], pts[16]) < 52) ch1 = 2;
+  }
+
+  // [gh][bdfikruvw]
+  if (inList(pl, [[1,4],[1,5],[1,6],[1,3],[1,0]])) {
+    if (pts[6].y > pts[8].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y &&
+        pts[0].x < pts[8].x && pts[0].x < pts[12].x && pts[0].x < pts[16].x && pts[0].x < pts[20].x)
+      ch1 = 3;
+  }
+
+  // [gh][l]
+  if (inList(pl, [[4,6],[4,1],[4,5],[4,3],[4,7]])) {
+    if (pts[4].x > pts[0].x) ch1 = 3;
+  }
+
+  // [gh][pqz]
+  if (inList(pl, [[5,3],[5,0],[5,7],[5,4],[5,2],[5,1],[5,5]])) {
+    if (pts[2].y + 15 < pts[16].y) ch1 = 3;
+  }
+
+  // [l][x]
+  if (inList(pl, [[6,4],[6,1],[6,2]])) {
+    if (dist(pts[4], pts[11]) > 55) ch1 = 4;
+  }
+
+  // [l][d]
+  if (inList(pl, [[1,4],[1,6],[1,1]])) {
+    if (dist(pts[4], pts[11]) > 50 &&
+        pts[6].y > pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y)
+      ch1 = 4;
+  }
+
+  // [l][gh]
+  if (inList(pl, [[3,6],[3,4]])) {
+    if (pts[4].x < pts[0].x) ch1 = 4;
+  }
+
+  // [l][c0]
+  if (inList(pl, [[2,2],[2,5],[2,4]])) {
+    if (pts[1].x < pts[12].x) ch1 = 4;
+  }
+
+  // [gh][z]
+  if (inList(pl, [[3,6],[3,5],[3,4]])) {
+    if (pts[6].y > pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y &&
+        pts[4].y > pts[10].y)
+      ch1 = 5;
+  }
+
+  // [gh][pq]
+  if (inList(pl, [[3,2],[3,1],[3,6]])) {
+    if (pts[4].y + 17 > pts[8].y && pts[4].y + 17 > pts[12].y &&
+        pts[4].y + 17 > pts[16].y && pts[4].y + 17 > pts[20].y)
+      ch1 = 5;
+  }
+
+  // [l][pqz]
+  if (inList(pl, [[4,4],[4,5],[4,2],[7,5],[7,6],[7,0]])) {
+    if (pts[4].x > pts[0].x) ch1 = 5;
+  }
+
+  // [pqz][aemnst]
+  if (inList(pl, [[0,2],[0,6],[0,1],[0,5],[0,0],[0,7],[0,4],[0,3],[2,7]])) {
+    if (pts[0].x < pts[8].x && pts[0].x < pts[12].x && pts[0].x < pts[16].x && pts[0].x < pts[20].x)
+      ch1 = 5;
+  }
+
+  // [pqz][yj]
+  if (inList(pl, [[5,7],[5,2],[5,6]])) {
+    if (pts[3].x < pts[0].x) ch1 = 7;
+  }
+
+  // [l][yj]
+  if (inList(pl, [[4,6],[4,2],[4,4],[4,1],[4,5],[4,7]])) {
+    if (pts[6].y < pts[8].y) ch1 = 7;
+  }
+
+  // [x][yj]
+  if (inList(pl, [[6,7],[0,7],[0,1],[0,0],[6,4],[6,6],[6,5],[6,1]])) {
+    if (pts[18].y > pts[20].y) ch1 = 7;
+  }
+
+  // [x][aemnst]
+  if (inList(pl, [[0,4],[0,2],[0,3],[0,1],[0,6]])) {
+    if (pts[5].x > pts[16].x) ch1 = 6;
+  }
+
+  // [yj][x]
+  if (inList(pl, [[7,2]])) {
+    if (pts[18].y < pts[20].y && pts[8].y < pts[10].y) ch1 = 6;
+  }
+
+  // [c0][x]
+  if (inList(pl, [[2,1],[2,2],[2,6],[2,7],[2,0]])) {
+    if (dist(pts[8], pts[16]) > 50) ch1 = 6;
+  }
+
+  // [l][x] distance
+  if (inList(pl, [[4,6],[4,2],[4,1],[4,4]])) {
+    if (dist(pts[4], pts[11]) < 60) ch1 = 6;
+  }
+
+  // [x][d]
+  if (inList(pl, [[1,4],[1,6],[1,0],[1,2]])) {
+    if (pts[5].x - pts[4].x - 15 > 0) ch1 = 6;
+  }
+
+  // [b][pqz] and similar
+  const lB = [[5,0],[5,1],[5,4],[5,5],[5,6],[6,1],[7,6],[0,2],[7,1],[7,4],[6,6],[7,2],[5,0],
+               [6,3],[6,4],[7,5],[7,2]];
+  if (inList(pl, lB)) {
+    if (pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y > pts[16].y && pts[18].y > pts[20].y)
+      ch1 = 1;
+  }
+
+  // [f][pqz] and similar
+  const lF = [[6,1],[6,0],[0,3],[6,4],[2,2],[0,6],[6,2],[7,6],[4,6],[4,1],[4,2],[0,2],[7,1],
+               [7,4],[6,6],[7,2],[7,5],[7,2]];
+  if (inList(pl, lF)) {
+    if (pts[6].y < pts[8].y && pts[10].y > pts[12].y && pts[14].y > pts[16].y && pts[18].y > pts[20].y)
+      ch1 = 1;
+  }
+
+  if (inList(pl, [[6,1],[6,0],[4,2],[4,1],[4,6],[4,4]])) {
+    if (pts[10].y > pts[12].y && pts[14].y > pts[16].y && pts[18].y > pts[20].y)
+      ch1 = 1;
+  }
+
+  // [d][pqz]
+  if (inList(pl, [[5,0],[3,4],[3,0],[3,1],[3,5],[5,5],[5,4],[5,1],[7,6]])) {
+    if (pts[6].y > pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y &&
+        pts[2].x < pts[0].x && pts[4].y > pts[14].y)
+      ch1 = 1;
+  }
+
+  if (inList(pl, [[4,1],[4,2],[4,4]])) {
+    if (dist(pts[4], pts[11]) < 50 &&
+        pts[6].y > pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y)
+      ch1 = 1;
+  }
+
+  if (inList(pl, [[3,4],[3,0],[3,1],[3,5],[3,6]])) {
+    if (pts[6].y > pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y &&
+        pts[2].x < pts[0].x && pts[14].y < pts[4].y)
+      ch1 = 1;
+  }
+
+  if (inList(pl, [[6,6],[6,4],[6,1],[6,2]])) {
+    if (pts[5].x - pts[4].x - 15 < 0) ch1 = 1;
+  }
+
+  // [i][pqz]
+  const lI = [[5,4],[5,5],[5,1],[0,3],[0,7],[5,0],[0,2],[6,2],[7,5],[7,1],[7,6],[7,7]];
+  if (inList(pl, lI)) {
+    if (pts[6].y < pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y > pts[20].y)
+      ch1 = 1;
+  }
+
+  // [yj][bfdi]
+  if (inList(pl, [[1,5],[1,7],[1,1],[1,6],[1,3],[1,0]])) {
+    if (pts[4].x < pts[5].x + 15 &&
+        pts[6].y < pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y > pts[20].y)
+      ch1 = 7;
+  }
+
+  // [uvr]
+  const lUVR = [[5,5],[5,0],[5,4],[5,1],[4,6],[4,1],[7,6],[3,0],[3,5]];
+  if (inList(pl, lUVR)) {
+    if (pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y &&
+        pts[4].y > pts[14].y)
+      ch1 = 1;
+  }
+
+  // [w]
+  const fg = 13;
+  const lW = [[3,5],[3,0],[3,6],[5,1],[4,1],[2,0],[5,0],[5,5]];
+  if (inList(pl, lW)) {
+    if (!(pts[0].x + fg < pts[8].x && pts[0].x + fg < pts[12].x && pts[0].x + fg < pts[16].x && pts[0].x + fg < pts[20].x) &&
+        !(pts[0].x > pts[8].x && pts[0].x > pts[12].x && pts[0].x > pts[16].x && pts[0].x > pts[20].x) &&
+        dist(pts[4], pts[11]) < 50)
+      ch1 = 1;
+  }
+
+  if (inList(pl, [[5,0],[5,5],[0,1]])) {
+    if (pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y > pts[16].y)
+      ch1 = 1;
+  }
+
+  // ---- Now map group index to exact letter ----
+
+  if (ch1 === 0) {
+    // Group 0: A, E, M, N, S, T
+    let result = 'S';
+    if (pts[4].x < pts[6].x && pts[4].x < pts[10].x && pts[4].x < pts[14].x && pts[4].x < pts[18].x)
+      result = 'A';
+    if (pts[4].x > pts[6].x && pts[4].x < pts[10].x && pts[4].x < pts[14].x && pts[4].x < pts[18].x &&
+        pts[4].y < pts[14].y && pts[4].y < pts[18].y)
+      result = 'T';
+    if (pts[4].y > pts[8].y && pts[4].y > pts[12].y && pts[4].y > pts[16].y && pts[4].y > pts[20].y)
+      result = 'E';
+    if (pts[4].x > pts[6].x && pts[4].x > pts[10].x && pts[4].x > pts[14].x && pts[4].y < pts[18].y)
+      result = 'M';
+    if (pts[4].x > pts[6].x && pts[4].x > pts[10].x && pts[4].y < pts[18].y && pts[4].y < pts[14].y)
+      result = 'N';
+    return result;
+  }
+
+  if (ch1 === 2) return dist(pts[12], pts[4]) > 42 ? 'C' : 'O';
+
+  if (ch1 === 3) return dist(pts[8], pts[12]) > 72 ? 'G' : 'H';
+
+  if (ch1 === 7) return dist(pts[8], pts[4]) > 42 ? 'Y' : 'J';
+
+  if (ch1 === 4) return 'L';
+
+  if (ch1 === 6) return 'X';
+
+  if (ch1 === 5) {
+    if (pts[4].x > pts[12].x && pts[4].x > pts[16].x && pts[4].x > pts[20].x) {
+      return pts[8].y < pts[5].y ? 'Z' : 'Q';
+    }
+    return 'P';
+  }
+
   if (ch1 === 1) {
+    // Group 1: B, D, F, I, K, R, U, V, W
     if (pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y > pts[16].y && pts[18].y > pts[20].y) return 'B';
     if (pts[6].y > pts[8].y && pts[10].y < pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y) return 'D';
     if (pts[6].y < pts[8].y && pts[10].y > pts[12].y && pts[14].y > pts[16].y && pts[18].y > pts[20].y) return 'F';
@@ -212,57 +446,33 @@ function getLetter(ch1, ch2, pts) {
     if (pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y > pts[16].y && pts[18].y < pts[20].y) return 'W';
     if (pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y && pts[4].y < pts[9].y) return 'K';
     if (pts[8].x > pts[12].x && pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y) return 'R';
-    if ((dist(pts[8], pts[12]) - dist(pts[6], pts[10])) < 8 && pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y) return 'U';
-    if ((dist(pts[8], pts[12]) - dist(pts[6], pts[10])) >= 8 && pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y) return 'V';
+    if ((dist(pts[8], pts[12]) - dist(pts[6], pts[10])) < 8 &&
+        pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y) return 'U';
+    if ((dist(pts[8], pts[12]) - dist(pts[6], pts[10])) >= 8 &&
+        pts[6].y > pts[8].y && pts[10].y > pts[12].y && pts[14].y < pts[16].y && pts[18].y < pts[20].y &&
+        pts[4].y > pts[9].y) return 'V';
     return 'B';
-  }
-
-  // Group 2 → C, O
-  if (ch1 === 2) {
-    if (dist(pts[12], pts[4]) > 42) return 'C';
-    return 'O';
-  }
-
-  // Group 3 → G, H
-  if (ch1 === 3) {
-    if (dist(pts[8], pts[12]) > 72) return 'G';
-    return 'H';
-  }
-
-  // Group 4 → L
-  if (ch1 === 4) return 'L';
-
-  // Group 5 → P, Q, Z
-  if (ch1 === 5) {
-    if (pts[4].x > pts[12].x && pts[4].x > pts[16].x && pts[4].x > pts[20].x) {
-      if (pts[8].y < pts[5].y) return 'Z';
-      return 'Q';
-    }
-    return 'P';
-  }
-
-  // Group 6 → X
-  if (ch1 === 6) return 'X';
-
-  // Group 7 → Y, J
-  if (ch1 === 7) {
-    if (dist(pts[8], pts[4]) > 42) return 'Y';
-    return 'J';
   }
 
   return '';
 }
 
+// Helper: check if array pl exists in list of arrays
+function inList(pl, list) {
+  return list.some(item => item[0] === pl[0] && item[1] === pl[1]);
+}
+
+// ============================================
+// Broadcasting + UI
+// ============================================
+
 function broadcastSignLetter(letter, clientId) {
-  // Send detected letter to all other participants
   sendMessage({
     type: 'sign-letter-detected',
     broadcast: true,
     letter: letter,
     senderId: clientId
   });
-
-  // Also show text locally for the deaf person to see what was detected
   showDetectedLetter(letter);
 }
 
